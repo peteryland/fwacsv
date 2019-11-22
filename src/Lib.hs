@@ -13,19 +13,22 @@ import Data.Time.Format(formatTime, defaultTimeLocale)
 import Data.List(intercalate)
 
 showTime :: NominalDiffTime -> String
-showTime t = formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" $ posixSecondsToUTCTime t
+showTime t = formatTime defaultTimeLocale "%s,%Y-%m-%d %H:%M:%S" $ posixSecondsToUTCTime t
 
 show' :: Float -> String
-show' f = if f > 200 then "NaN" else show f
+show' f = if f > 10000000 then "NaN" else show f
 
 show'' :: NominalDiffTime -> [Float] -> String
 show'' t fs = showTime t ++ "," ++ (intercalate "," $ map show' fs)
 
-showN :: Int -> NominalDiffTime -> [(Word32, Float)] -> String
-showN _ _ [] = ""
-showN n t xs = if map fst xs == 0:(replicate n 0x42fa0000 ++ replicate n 0xc2480000)
-               then ""
-               else show'' t (map snd $ take n xs) ++ "\n" ++ showN n (t + 10) (drop n xs)
+showN :: Int -> Int -> NominalDiffTime -> [(Word32, Float)] -> String
+showN _ _ _ [] = ""
+showN _ 0 _ _  = ""
+showN n m t xs = show'' t (map snd $ take n xs) ++ "\n" ++ showN n (m - 1) (t + 10) (drop n xs)
+
+-- showN n m t xs = if map fst xs == 0:(replicate n 0x42fa0000 ++ replicate n 0xc2480000)
+                   -- then ""
+                   -- else show'' t (map snd $ take n xs) ++ "\n" ++ showN n (m - 1) (t + 10) (drop n xs)
 
 getData :: Int -> Get a -> BS.ByteString -> [a]
 getData l f s = runGet (replicateM (fromIntegral (BS.length s) `div` l) f) s
@@ -46,9 +49,10 @@ processFiles args = do
     let xs = zip (getData 4 getWord32le s) (getData 4 getFloatle s)
     let timestamp = fromIntegral $ fst $ xs !! 1 -- timestamp
     let n = fromIntegral $ fst $ xs !! 3 -- number of sensors
+    let m = fromIntegral $ fst $ xs !! 4 -- number of readings
     let s' = BS.drop 750 s -- drop the file header
     let (sensor_headers, s'') = chunksOf n 528 s'
-    putStrLn $ "Time," ++ (intercalate "," $ map getName sensor_headers)
+    putStrLn $ "Timestamp,Time," ++ (intercalate "," $ map getName sensor_headers)
     let xs' = zip (getData 4 getWord32le s'') (getData 4 getFloatle s'')
-    putStrLn $ showN n timestamp xs'
+    putStrLn $ showN n m timestamp xs'
     )
